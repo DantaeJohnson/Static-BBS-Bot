@@ -1,0 +1,200 @@
+/* Static BBS Bot - dark theme with a Bankai-orange accent */
+
+* {
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 13px;
+    color: #e6e8ec;
+    outline: none;
+}
+
+QMainWindow, #Root { background: #0d0f13; }
+
+/* ---------- Sidebar ---------- */
+#Sidebar {
+    background: #12151b;
+    border-right: 1px solid #1f242d;
+}
+#Brand { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #ffffff; }
+#BrandAccent { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #ff7a1a; }
+#Version { color: #6b7280; font-size: 11px; }
+
+QPushButton#NavButton {
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    padding: 11px 14px;
+    text-align: left;
+    color: #9aa3b2;
+    font-weight: 600;
+}
+QPushButton#NavButton:hover { background: #1a1e26; color: #e6e8ec; }
+QPushButton#NavButton:checked {
+    background: #22180f;
+    color: #ff9a4d;
+    border-left: 3px solid #ff7a1a;
+}
+
+#SidebarStatus {
+    background: #171b22;
+    border: 1px solid #222833;
+    border-radius: 12px;
+}
+#SidebarStatusTitle { color: #6b7280; font-size: 11px; font-weight: 700; }
+
+/* ---------- Pages ---------- */
+#PageTitle { font-size: 24px; font-weight: 800; color: #ffffff; }
+#PageSubtitle { color: #8b93a1; font-size: 13px; }
+#Muted { color: #8b93a1; font-size: 12px; }
+#RowTitle { font-weight: 600; color: #e6e8ec; }
+#Divider { background: #1f242d; }
+
+QScrollArea { background: transparent; border: none; }
+QScrollArea > QWidget > QWidget { background: transparent; }
+
+#Card {
+    background: #151920;
+    border: 1px solid #1f242d;
+    border-radius: 14px;
+}
+#CardTitle { font-size: 15px; font-weight: 700; color: #ffffff; }
+
+/* ---------- Stat tiles ---------- */
+#StatTile {
+    background: #151920;
+    border: 1px solid #1f242d;
+    border-radius: 12px;
+}
+#StatValue { font-size: 22px; font-weight: 800; color: #ffffff; }
+#StatLabel { font-size: 10px; font-weight: 700; color: #6b7280; letter-spacing: 1px; }
+
+/* ---------- Mode cards ---------- */
+QPushButton#ModeCard {
+    background: #151920;
+    border: 1px solid #232934;
+    border-radius: 14px;
+    padding: 16px 18px;
+    text-align: left;
+    color: #c9ced8;
+    font-size: 13px;
+}
+QPushButton#ModeCard:hover { border-color: #3a4250; }
+QPushButton#ModeCard:checked {
+    background: #1f160e;
+    border: 2px solid #ff7a1a;
+    color: #ffffff;
+}
+
+/* ---------- Buttons ---------- */
+QPushButton {
+    background: #1d222b;
+    border: 1px solid #2a303b;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-weight: 600;
+}
+QPushButton:hover { background: #252b36; }
+QPushButton:pressed { background: #191d25; }
+QPushButton:disabled { color: #555c68; background: #161a20; border-color: #1f242d; }
+
+QPushButton#Primary {
+    background: #ff7a1a;
+    border: none;
+    color: #140a02;
+    font-size: 14px;
+    font-weight: 800;
+    padding: 12px 22px;
+}
+QPushButton#Primary:hover { background: #ff8c38; }
+QPushButton#Primary:pressed { background: #e86a0e; }
+QPushButton#Primary:disabled { background: #3a2a1e; color: #7a6656; }
+
+QPushButton#Danger {
+    background: #2a1416;
+    border: 1px solid #5a1f24;
+    color: #ff8a8a;
+    padding: 12px 22px;
+}
+QPushButton#Danger:hover { background: #3a1a1d; }
+
+QPushButton#Ghost {
+    background: transparent;
+    border: 1px solid #2a303b;
+    padding: 12px 22px;
+}
+
+/* ---------- Inputs ---------- */
+QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
+    background: #0f1217;
+    border: 1px solid #2a303b;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-height: 20px;
+    min-width: 120px;
+    selection-background-color: #ff7a1a;
+}
+QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QLineEdit:focus { border-color: #ff7a1a; }
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 18px; border: none; background: transparent; }
+QComboBox::drop-down { border: none; width: 22px; }
+QComboBox QAbstractItemView {
+    background: #151920;
+    border: 1px solid #2a303b;
+    selection-background-color: #2a1c10;
+    selection-color: #ff9a4d;
+}
+
+/* ---------- Log ---------- */
+QPlainTextEdit#Log, QTextEdit#Log {
+    background: #0a0c10;
+    border: 1px solid #1f242d;
+    border-radius: 10px;
+    padding: 8px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 12px;
+}
+
+/* ---------- Tables ---------- */
+QTableWidget {
+    background: #0f1217;
+    border: 1px solid #1f242d;
+    border-radius: 10px;
+    gridline-color: #1a1e26;
+    selection-background-color: #2a1c10;
+    selection-color: #ffffff;
+}
+QHeaderView::section {
+    background: #151920;
+    color: #8b93a1;
+    border: none;
+    border-bottom: 1px solid #1f242d;
+    padding: 8px;
+    font-weight: 700;
+}
+QTableCornerButton::section { background: #151920; border: none; }
+
+/* ---------- Scrollbars ---------- */
+QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollBar::handle:vertical { background: #2a303b; border-radius: 4px; min-height: 30px; }
+QScrollBar::handle:vertical:hover { background: #3a4250; }
+QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
+QScrollBar::handle:horizontal { background: #2a303b; border-radius: 4px; min-width: 30px; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: none; }
+
+/* ---------- Pills ---------- */
+#Pill {
+    border-radius: 11px;
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+#Pill[state="idle"]    { background: #1d222b; color: #9aa3b2; }
+#Pill[state="running"] { background: #12301d; color: #4ade80; }
+#Pill[state="paused"]  { background: #33280f; color: #fbbf24; }
+#Pill[state="waiting"] { background: #102638; color: #60a5fa; }
+
+/* ---------- Dialogs ---------- */
+QDialog { background: #0d0f13; }
+QMessageBox { background: #12151b; }
+QToolTip { background: #1d222b; color: #e6e8ec; border: 1px solid #2a303b; padding: 6px; }
