@@ -95,7 +95,8 @@ class StoryBot:
         self.part_switches = 0                 # parts entered via Select Part this run
         self.part_pick: dict | None = None     # progress of picking the next part
         self.part_from_map = False             # the bot itself opened Select Part (part finished)
-        self.part_rewind: dict | None = None   # progress of going back to Part 1
+        self.part_scan: dict | None = None     # progress of finding the earliest uncleared part
+        self.part_checked = False              # visited Select Part once this run
         self.fresh_part = False                # a part was just opened, no stage clicked yet
         self.left_scrolls = 0
         self.nav_at = -1e9                     # last home -> Solo -> Story navigation tap
@@ -725,6 +726,8 @@ class StoryBot:
 
     # ------------------------------------------------------------ Select Part
     PART_GAP = 35          # px between part cards (base coords)
+    CARD_W = 431           # width of a part card (base coords)
+    CHECK_PARTS_AT_START = True   # visit Select Part once per run to find the earliest uncleared part
 
     def _highlighted_part(self, f: Frame):
         """Bounding box (x1, y1, x2, y2) of the part card with the yellow 'current' frame."""
@@ -764,82 +767,102 @@ class StoryBot:
                 start = None
         return [r for r in runs if r[1] - r[0] > 150]
 
-    def _open_first_part(self, f: Frame, box) -> bool:
-        """Started on Select Part: scroll back to Part 1 and open it, so parts go in order."""
+    def _part_slots(self, f: Frame, box, cy: int) -> list[tuple[int, int, bool]]:
+        """Fully visible part cards, left to right: (x0, x1, has CLEAR stamp)."""
+        import cv2
+        import numpy as np
+        if box:
+            anchor, w = box[0], box[2] - box[0]
+        else:
+            cards = self._white_cards(f, cy)
+            if not cards:
+                return []
+            anchor, w = cards[0][0], self.CARD_W
+        pitch = w + self.PART_GAP
+        stamps = [m.center for m in self.lib.find_all(
+            f, "part_clear", threshold=self.s.match_threshold - 0.07)] if self.lib.has("part_clear") else []
+        gray = cv2.cvtColor(f.image, cv2.COLOR_BGR2GRAY)
+        slots = []
+        for k in range(-4, 5):
+            x0 = anchor + k * pitch
+            x1 = x0 + w
+            if x0 < 5 or x1 > BASE_W - 5:
+                continue   # cut off at the screen edge: its stamp may be hidden
+            band = gray[cy + 60:cy + 110, x0 + 20:x1 - 20]
+            if band.size == 0 or float((band > 200).mean()) < 0.35:
+                continue   # no card there (end of the list)
+            cleared = any(x0 + 15 < sx < x0 + 110 and 115 < sy < 205 for sx, sy in stamps)
+            slots.append((x0, x1, cleared))
+        return slots
+
+    def _r_select_part(self, f: Frame) -> bool:
+        """Select Part screen: open the earliest part without a CLEAR stamp.
+
+        Scrolls back to Part 1 first, then moves right through the list until it finds
+        a card with no CLEAR stamp. Every card stamped -> the story is complete.
+        """
+        import cv2
+        import numpy as np
+        if not self.find("select_part_title") or self.s.mode != MODE_PROGRESS:
+            return False
+        self._screen("Select Part")
+        self.part_checked = True
+        box = self._highlighted_part(f)
         cy = (box[1] + box[3]) // 2 if box else 411
-        st = self.part_rewind
+        st = self.part_scan
         if st is None:
-            st = self.part_rewind = {"drags": 0, "last": None, "taps": 0, "at_start": False}
-            log.info("Going back to Part 1 - story parts are played in order.")
-        cards = self._white_cards(f, cy)
-        if not cards:
-            return True  # still sliding in
-        first = cards[0]
-        if not st["at_start"]:
-            if (st["drags"] > 0 and st["last"] is not None and abs(first[0] - st["last"]) < 12) \
+            st = self.part_scan = {"phase": "rewind", "drags": 0, "last": None, "taps": 0,
+                                   "moves": 0, "thumb": None, "logged": False}
+            log.info("Select Part: looking for the earliest part that isn't cleared yet.")
+
+        if st["phase"] == "rewind":
+            cards = self._white_cards(f, cy)
+            if not cards:
+                return True  # still sliding in
+            first = cards[0][0]
+            if (st["drags"] > 0 and st["last"] is not None and abs(first - st["last"]) < 12) \
                     or st["drags"] >= 40:
-                st["at_start"] = True   # the list stopped moving: Part 1 is the left-most card
+                st["phase"] = "scan"   # the list stopped moving: Part 1 is the left-most card
             else:
-                st["last"] = first[0]
+                st["last"] = first
                 st["drags"] += 1
                 self.dev.drag(BASE_W * 0.15, cy, BASE_W * 0.85, cy)
                 self.ctl.wait(max(1.0, self.s.action_delay))
                 return True
-        st["taps"] += 1
-        if st["taps"] > 6:
-            raise BotFinished("Couldn't open Part 1 from Select Part.")
-        log.info("Opening Part 1.")
-        card_w = (box[2] - box[0]) if box else 430   # neighbouring cards can merge into one run
-        self.click((first[0] + min(first[1] - first[0], card_w) // 2, cy), "open part")
-        self.fresh_part = True
-        return True
 
-    def _r_select_part(self, f: Frame) -> bool:
-        """Select Part screen.
-
-        Reached because the bot finished a part: open the part after the highlighted
-        (current) one. Otherwise (the run started here): go back to Part 1.
-        """
-        if not self.find("select_part_title") or self.s.mode != MODE_PROGRESS:
-            return False
-        self._screen("Select Part")
-        box = self._highlighted_part(f)
-        if not self.part_from_map:
-            return self._open_first_part(f, box)
-        if box is None:
-            return True  # still sliding in; look again next tick
-        x1, y1, x2, y2 = box
-        cy = (y1 + y2) // 2
-        pick = self.part_pick
-        if pick is not None and abs(((x1 + x2) // 2) - pick["from_cx"]) > 100:
-            # The next part is now the highlighted one: open it.
-            pick["enter_taps"] = pick.get("enter_taps", 0) + 1
-            if pick["enter_taps"] > 4:
-                raise BotFinished("Couldn't open the next story part from Select Part.")
-            log.info("Opening the next story part.")
-            self.click(((x1 + x2) // 2, cy), "open part")
+        slots = self._part_slots(f, box, cy)
+        if not slots:
+            return True
+        target = next((sl for sl in slots if not sl[2]), None)
+        if target is not None:
+            st["taps"] += 1
+            if st["taps"] > 8:
+                raise BotFinished("Couldn't open the story part on Select Part.")
+            if not st["logged"]:
+                st["logged"] = True
+                self.part_switches += 1
+                log.info("Opening the earliest part without a CLEAR stamp.")
+            self.click(((target[0] + target[1]) // 2, cy), "open part")
             self.fresh_part = True
             return True
-        nx = x2 + self.PART_GAP + (x2 - x1) // 2   # centre of the card to the right
-        if nx > BASE_W - 110:
-            log.info("Scrolling the part list to reach the next part.")
-            self.dev.drag(BASE_W * 0.8, cy, BASE_W * 0.8 - (x2 - x1 + self.PART_GAP), cy)
-            self.ctl.wait(max(1.0, self.s.action_delay))
-            return True
-        import cv2
-        import numpy as np
-        gray = cv2.cvtColor(f.image[cy + 60:cy + 110, nx - 60:nx + 60], cv2.COLOR_BGR2GRAY)
-        if gray.size == 0 or float(np.median(gray)) < 150:   # no white card there
-            raise BotFinished("There's no story part after this one - the story is complete!")
-        if pick is None:
-            self.part_pick = pick = {"from_cx": (x1 + x2) // 2, "taps": 0}
-        pick["taps"] += 1
-        if pick["taps"] > 5:
-            raise BotFinished("The next story part didn't respond on Select Part.")
-        self.part_switches += 1 if pick["taps"] == 1 else 0
-        log.info("Moving on to the next story part.")
-        self.click((nx, cy), "next part")
-        self.fresh_part = True
+
+        # Every visible card is stamped CLEAR. Nothing to the right of the last one: that
+        # was the final part. Otherwise move the list along to the later parts.
+        last_x1 = slots[-1][1]
+        if box and last_x1 <= box[2] + 5:
+            raise BotFinished("Every story part is CLEAR - the story is complete!")
+        thumb = cv2.resize(cv2.cvtColor(f.image[cy - 200:cy + 100], cv2.COLOR_BGR2GRAY), (160, 30))
+        if st["moves"] > 0 and st["thumb"] is not None and \
+                float(np.abs(thumb.astype(int) - st["thumb"].astype(int)).mean()) < 15:
+            raise BotFinished("Every story part is CLEAR - the story is complete!")
+        if st["moves"] >= 30:
+            raise BotFinished("Couldn't find a part without a CLEAR stamp on Select Part.")
+        st["thumb"] = thumb
+        st["moves"] += 1
+        pitch = (slots[0][1] - slots[0][0]) + self.PART_GAP
+        log.info("These parts are all CLEAR - scrolling to the later parts.")
+        self.dev.drag(BASE_W * 0.85, cy, BASE_W * 0.85 - 2 * pitch, cy)
+        self.ctl.wait(max(1.0, self.s.action_delay))
         return True
 
     def _r_story_map(self, f: Frame) -> bool:
@@ -849,10 +872,18 @@ class StoryBot:
             return False  # includes a map dimmed behind a popup/cutscene
         self._screen("Story map")
         self.part_pick = None
-        self.part_rewind = None
+        self.part_scan = None
         self.back_presses = 0
         if self.s.mode != MODE_PROGRESS:
             return False  # farm mode: fall through to the 'open a stage first' message
+        if not self.part_checked and self.CHECK_PARTS_AT_START:
+            sp = self.find("select_part_button")
+            if sp:
+                # Once per run: make sure this is the earliest part that isn't cleared.
+                self.part_checked = True
+                log.info("Checking Select Part for the earliest part that isn't cleared yet.")
+                self.click(sp, "select part")
+                return True
         now = self.clock()
         self.ignored_spots = {k: t for k, t in self.ignored_spots.items() if t > now}
         open_stages = [st for st in view.playable

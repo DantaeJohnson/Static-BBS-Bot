@@ -152,12 +152,11 @@ when connected.
 
 1. In BlueStacks, open **Bleach: Brave Souls** and go to the **Story** map
    (the screen with the numbered stages, **MAIN** / **SIDE** tabs and **Select Part** button).
-   - Starting on the **home screen** (or the title screen, or most other menus) works too:
-     the bot goes **SOLO → STORY** by itself and carries on from the story map.
-   - Starting on the **Story map** continues from the part that's open.
-   - Starting on the **Select Part** screen makes the bot go back to **Part 1** and work
-     through the parts in order (1, 2, 3 …). Parts that are already finished are checked
-     and skipped, which takes a little while for each one.
+   You can also start the bot on the home screen, the title screen or the **Select Part**
+   screen. Wherever it starts, it first opens **Select Part** and goes to the **earliest
+   part without a CLEAR stamp**, so parts are always played in order (1, 2, 3 …), in
+   NORMAL or HARD, whichever is selected. When every part is CLEAR, the story is complete
+   and the bot stops.
 2. In the bot, click **◆ Dashboard** on the left.
 3. **Pick a mode:**
 
