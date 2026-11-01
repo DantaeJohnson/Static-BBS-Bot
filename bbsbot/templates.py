@@ -64,6 +64,13 @@ SPECS: list[TemplateSpec] = [
     TemplateSpec("purchase", "Tickets", "'Purchase' button on the not-enough-Soul-Tickets popup / shop"),
     TemplateSpec("50_soul_tickets", "Tickets", "'50 Soul Tickets' option in the refill shop"),
     TemplateSpec("start_quest_failed", "Tickets", "Red 'Start Quest' (not enough tickets)", False),
+    # Finding the way to story (from the home screen / title screen)
+    TemplateSpec("home_solo", "Navigation", "'SOLO' button on the home screen", False),
+    TemplateSpec("solo_quests_title", "Navigation", "'Solo Quests' menu title", False),
+    TemplateSpec("solo_story", "Navigation", "'STORY' button in the Solo Quests menu", False),
+    TemplateSpec("title_logo", "Navigation", "'Brave Souls' logo on the title screen", False),
+    TemplateSpec("return_title_text", "Navigation",
+                 "'Return to Title Screen?' text (the bot presses Cancel)", False),
     # End of content
     TemplateSpec("story_complete", "Results", "'Congratulations on completing the story!' (Story Complete popup)"),
     TemplateSpec("story_complete_title", "Results", "'Story Complete' popup title", False),
@@ -80,7 +87,7 @@ SPECS: list[TemplateSpec] = [
 ]
 
 SPEC_BY_NAME = {s.name: s for s in SPECS}
-GROUPS = ["Battle", "Results", "Story", "Tickets", "Boost"]
+GROUPS = ["Navigation", "Battle", "Results", "Story", "Tickets", "Boost"]
 
 AREA_RETURN = ["story_return", "human_world", "soul_society", "hueco_mundo", "side_stories", "others"]
 NEW_BADGES = ["story_new", "new_2", "new"]

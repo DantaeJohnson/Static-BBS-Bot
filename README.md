@@ -152,6 +152,8 @@ when connected.
 
 1. In BlueStacks, open **Bleach: Brave Souls** and go to the **Story** map
    (the screen with the numbered stages, **MAIN** / **SIDE** tabs and **Select Part** button).
+   - Starting on the **home screen** (or the title screen, or most other menus) works too:
+     the bot goes **SOLO → STORY** by itself and carries on from the story map.
    - Starting on the **Story map** continues from the part that's open.
    - Starting on the **Select Part** screen makes the bot go back to **Part 1** and work
      through the parts in order (1, 2, 3 …). Parts that are already finished are checked
@@ -161,7 +163,7 @@ when connected.
 
    | Mode | What it does | Where to start in the game |
    |---|---|---|
-   | **Story Progress** | Plays every uncleared story stage in order, then stops when the story is finished. | The **Story map** |
+   | **Story Progress** | Plays every uncleared story stage in order, then stops when the story is finished. | The **Story map**, or the home screen |
    | **Farm Stage** | Replays one stage again and again with **Retry** (for drops or EXP). | That stage's **Prepare for Quest** screen |
 
 4. **Check the Spirit Orb options** in the *Soul Tickets & Spirit Orbs* box. They're

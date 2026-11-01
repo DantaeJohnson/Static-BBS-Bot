@@ -98,6 +98,8 @@ class StoryBot:
         self.part_rewind: dict | None = None   # progress of going back to Part 1
         self.fresh_part = False                # a part was just opened, no stage clicked yet
         self.left_scrolls = 0
+        self.nav_at = -1e9                     # last home -> Solo -> Story navigation tap
+        self.back_presses = 0                  # Back presses while finding the way to story
         self.no_next_logged = False
 
         self.no_new_frames = 0
@@ -169,11 +171,12 @@ class StoryBot:
 
         # Priority order matters: popups first, then battle, results, story
         # scenes, quest-flow buttons, and finally quest-list navigation.
-        for rule in (self._r_story_complete, self._r_roster_full, self._r_slots_confirm, self._r_defeat, self._r_ticket_popup,
+        for rule in (self._r_return_title, self._r_story_complete, self._r_roster_full, self._r_slots_confirm, self._r_defeat, self._r_ticket_popup,
                      self._r_battle, self._r_results_banner, self._r_skip, self._r_ok, self._r_results_buttons, self._r_close,
                      self._r_area_return, self._r_prepare, self._r_message_popup, self._r_start,
                      self._r_cancel,
-                     self._r_select_part, self._r_story_map, self._r_new_quest,
+                     self._r_select_part, self._r_story_map, self._r_title, self._r_solo_menu,
+                     self._r_home, self._r_new_quest,
                      self._r_list_without_new):
             if rule(frame):
                 self.last_progress = self.clock()
@@ -524,6 +527,61 @@ class StoryBot:
             self.click(ok, "ok (confirm skip)")
         return True
 
+    # ------------------------------------------------- finding the way to story
+    def _r_return_title(self, f: Frame) -> bool:
+        """'Return to Title Screen?' - never press its OK."""
+        if not self.find("return_title_text"):
+            return False
+        self._screen("Return to title?")
+        cancel = self.find("cancel")
+        log.info("'Return to Title Screen?' popup - pressing Cancel.")
+        self.click(cancel if cancel else (560, 620), "cancel")
+        return True
+
+    def _nav_ready(self) -> bool:
+        if self.clock() - self.nav_at < 4:
+            return False   # the last tap is still opening its screen
+        self.nav_at = self.clock()
+        return True
+
+    def _r_title(self, f: Frame) -> bool:
+        """Title screen (after the game restarts): tap to start."""
+        if not self.find("title_logo"):
+            return False
+        self._screen("Title screen")
+        if self._nav_ready():
+            log.info("Title screen - tapping GAME START.")
+            self.click((800, 750), "game start")
+        return True
+
+    def _r_solo_menu(self, f: Frame) -> bool:
+        """Solo Quests menu: open STORY (Story Progress mode)."""
+        if self.s.mode != MODE_PROGRESS or not self.find("solo_quests_title"):
+            return False
+        story = self.find("solo_story")
+        if not story:
+            return False
+        self._screen("Solo Quests")
+        if self._nav_ready():
+            log.info("Solo Quests - opening STORY.")
+            self.click(story, "solo story")
+        return True
+
+    def _r_home(self, f: Frame) -> bool:
+        """Home screen: open SOLO (Story Progress mode)."""
+        if self.s.mode != MODE_PROGRESS:
+            return False
+        solo = self.find("home_solo")
+        if not solo:
+            return False
+        if stage_map._brightness(f, solo.x, solo.y, solo.x + solo.w, solo.y + solo.h) < 200:
+            return False   # dimmed: a menu or popup is open on top of the home screen
+        self._screen("Home")
+        if self._nav_ready():
+            log.info("Home screen - opening SOLO to get to the story.")
+            self.click(solo, "home solo")
+        return True
+
     def _r_ok(self, f: Frame) -> bool:
         ok = self.find("ok")
         if not ok:
@@ -731,7 +789,8 @@ class StoryBot:
         if st["taps"] > 6:
             raise BotFinished("Couldn't open Part 1 from Select Part.")
         log.info("Opening Part 1.")
-        self.click(((first[0] + first[1]) // 2, cy), "open part")
+        card_w = (box[2] - box[0]) if box else 430   # neighbouring cards can merge into one run
+        self.click((first[0] + min(first[1] - first[0], card_w) // 2, cy), "open part")
         self.fresh_part = True
         return True
 
@@ -791,6 +850,7 @@ class StoryBot:
         self._screen("Story map")
         self.part_pick = None
         self.part_rewind = None
+        self.back_presses = 0
         if self.s.mode != MODE_PROGRESS:
             return False  # farm mode: fall through to the 'open a stage first' message
         now = self.clock()
@@ -921,6 +981,15 @@ class StoryBot:
             self.dev.drag(BASE_W * 0.5, BASE_H * 0.72, BASE_W * 0.5, BASE_H * 0.32)
             self.ctl.wait(self.s.action_delay)
             self.no_new_frames = 1
+            return True
+        # Not a story screen: go Back (towards the home screen, from where the bot
+        # finds its way to the story map).
+        if self.back_presses < 8:
+            self.back_presses += 1
+            log.info(f"Not a story screen - pressing Back ({self.back_presses}/8).")
+            self.click(back, "back")
+            self.no_new_frames = 0
+            self.scrolls = 4   # don't scroll again on the next screen
             return True
         raise BotFinished(
             "No NEW quests left on this screen - story is cleared up to here! "
