@@ -49,10 +49,25 @@ def local_version(root: str | None = None) -> str:
         return "0.0.0"
 
 
+_zip_cache: bytes | None = None   # set when the version had to be read from the ZIP
+
+
 def remote_version(timeout: float = 8.0) -> str:
-    req = urllib.request.Request(VERSION_URL, headers={"Cache-Control": "no-cache"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "replace").strip()
+    """Newest version on GitHub. Reads version.txt directly; if that address is blocked
+    on this network, falls back to reading it from the repository ZIP."""
+    global _zip_cache
+    try:
+        req = urllib.request.Request(VERSION_URL, headers={"Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode("utf-8", "replace").strip()
+    except Exception:
+        data = _fetch_zip(60.0)
+        z = zipfile.ZipFile(io.BytesIO(data))
+        names = z.namelist()
+        prefix = names[0].split("/")[0] + "/"
+        v = z.read(prefix + "version.txt").decode("utf-8", "replace").strip()
+        _zip_cache = data
+        return v
 
 
 def can_update(root: str | None = None) -> bool:
@@ -69,9 +84,17 @@ def check(root: str | None = None) -> tuple[str, str, bool]:
     return local, remote, parse(remote) > parse(local)
 
 
-def download(timeout: float = 60.0) -> bytes:
+def _fetch_zip(timeout: float) -> bytes:
     with urllib.request.urlopen(ZIP_URL, timeout=timeout) as r:
         return r.read()
+
+
+def download(timeout: float = 60.0) -> bytes:
+    global _zip_cache
+    if _zip_cache is not None:          # already downloaded while checking the version
+        data, _zip_cache = _zip_cache, None
+        return data
+    return _fetch_zip(timeout)
 
 
 def install(data: bytes, root: str | None = None, run_pip: bool = True) -> list[str]:
