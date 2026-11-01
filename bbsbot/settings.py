@@ -38,7 +38,7 @@ class Settings:
     out_of_tickets: str = OUT_OF_TICKETS_WAIT
     # --- Character box full ("maximum number of characters") -----------------
     expand_roster: bool = False         # spend 5 orbs for +5 slots, or stop the run
-    max_roster_orbs: int = 25           # separate hard cap for roster expansions per run
+    roster_orb_limit: int = 0           # orbs per run for roster expansions; 0 = no limit
     recharge_wait_minutes: int = 15
 
     # --- Battle -------------------------------------------------------------
@@ -66,6 +66,7 @@ class Settings:
     pause_hotkey: str = "f8"
     stop_hotkey: str = "f9"
     show_overlay: bool = True
+    auto_update: bool = True            # install new versions from GitHub when the app opens
     debug_logging: bool = False
 
     # ------------------------------------------------------------------------

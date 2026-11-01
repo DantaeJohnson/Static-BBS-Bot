@@ -85,10 +85,15 @@ class StoryBot:
         self.last_stage_click = -1e9
         self.quest_started_at: float | None = None
         self.unknown_saved: list = []          # thumbnails of unknown screens already saved
+        self.last_thumb = None                 # frozen-screen detection (paused emulator)
+        self.same_since = 0.0
+        self.frozen_warned = False
         self.ticket_orbs = 0             # orbs spent on Soul Tickets (own cap)
         self.roster_orbs = 0             # orbs spent on character slots (own cap)
         self.slot_buy_at = -1e9
         self.map_swipes = 0
+        self.part_switches = 0                 # parts entered via Select Part this run
+        self.part_pick: dict | None = None     # progress of picking the next part
         self.no_next_logged = False
 
         self.no_new_frames = 0
@@ -164,7 +169,8 @@ class StoryBot:
                      self._r_battle, self._r_results_banner, self._r_skip, self._r_ok, self._r_results_buttons, self._r_close,
                      self._r_area_return, self._r_prepare, self._r_message_popup, self._r_start,
                      self._r_cancel,
-                     self._r_story_map, self._r_new_quest, self._r_list_without_new):
+                     self._r_select_part, self._r_story_map, self._r_new_quest,
+                     self._r_list_without_new):
             if rule(frame):
                 self.last_progress = self.clock()
                 self.unknown_since = None
@@ -335,7 +341,8 @@ class StoryBot:
         self._undo_start()
         cost = 5
         if self.s.expand_roster:
-            if self.roster_orbs + cost <= self.s.max_roster_orbs:
+            limit = self.s.roster_orb_limit
+            if limit <= 0 or self.roster_orbs + cost <= limit:
                 expand = self.find("expand_roster")
                 if expand:
                     log.info(f"Character box is full - spending {cost} Spirit Orbs for 5 more slots.")
@@ -348,8 +355,9 @@ class StoryBot:
                                 self.click_verified("ok", "ok (buy character slots)", near=ok):
                             self.roster_orbs += cost
                             self.stats.orbs_spent += cost
+                            cap = f"/{limit}" if limit > 0 else ""
                             log.success(f"Character box expanded. Orbs spent on slots this run: "
-                                        f"{self.roster_orbs}/{self.s.max_roster_orbs}.")
+                                        f"{self.roster_orbs}{cap}.")
                             return True
                     log.error("The slot purchase screen didn't appear as expected - not buying.")
                     cancel = self.find("cancel")
@@ -358,7 +366,7 @@ class StoryBot:
                     self.refresh()
             else:
                 log.warning(f"Spirit Orb cap for character slots reached "
-                            f"({self.roster_orbs}/{self.s.max_roster_orbs}).")
+                            f"({self.roster_orbs}/{limit}).")
         close = self.find("roster_close") or self.find("close_red") or self.find("close")
         if close and self.find("roster_full"):
             self.click(close, "close (character box full)")
@@ -653,12 +661,74 @@ class StoryBot:
             plus = self.find("boost_increase")
         self.refresh()
 
+    # ------------------------------------------------------------ Select Part
+    PART_GAP = 35          # px between part cards (base coords)
+
+    def _highlighted_part(self, f: Frame):
+        """Bounding box (x1, y1, x2, y2) of the part card with the yellow 'current' frame."""
+        import cv2
+        import numpy as np
+        hsv = cv2.cvtColor(f.image, cv2.COLOR_BGR2HSV)
+        y = ((hsv[:, :, 0] > 12) & (hsv[:, :, 0] < 38) & (hsv[:, :, 1] > 140)
+             & (hsv[:, :, 2] > 190)).astype(np.uint8)
+        y[:120] = 0
+        y[720:] = 0
+        cols = np.where(y.sum(0) > 250)[0]     # the frame's long vertical edges
+        if len(cols) < 4 or cols.max() - cols.min() < 250:
+            return None
+        x1, x2 = int(cols.min()), int(cols.max())
+        rows = np.where(y[:, x1:x2 + 1].sum(1) > 0.6 * (x2 - x1))[0]
+        if len(rows) < 2:
+            return None
+        return x1, int(rows.min()), x2, int(rows.max())
+
+    def _r_select_part(self, f: Frame) -> bool:
+        """Select Part screen: open the part to the right of the highlighted (current) one."""
+        if not self.find("select_part_title") or self.s.mode != MODE_PROGRESS:
+            return False
+        self._screen("Select Part")
+        box = self._highlighted_part(f)
+        if box is None:
+            return True  # still sliding in; look again next tick
+        x1, y1, x2, y2 = box
+        cy = (y1 + y2) // 2
+        pick = self.part_pick
+        if pick is not None and abs(((x1 + x2) // 2) - pick["from_cx"]) > 100:
+            # The next part is now the highlighted one: open it.
+            pick["enter_taps"] = pick.get("enter_taps", 0) + 1
+            if pick["enter_taps"] > 4:
+                raise BotFinished("Couldn't open the next story part from Select Part.")
+            log.info("Opening the next story part.")
+            self.click(((x1 + x2) // 2, cy), "open part")
+            return True
+        nx = x2 + self.PART_GAP + (x2 - x1) // 2   # centre of the card to the right
+        if nx > BASE_W - 110:
+            log.info("Scrolling the part list to reach the next part.")
+            self.dev.drag(BASE_W * 0.8, cy, BASE_W * 0.8 - (x2 - x1 + self.PART_GAP), cy)
+            self.ctl.wait(max(1.0, self.s.action_delay))
+            return True
+        import cv2
+        import numpy as np
+        gray = cv2.cvtColor(f.image[cy + 60:cy + 110, nx - 60:nx + 60], cv2.COLOR_BGR2GRAY)
+        if gray.size == 0 or float(np.median(gray)) < 150:   # no white card there
+            raise BotFinished("There's no story part after this one - the story is complete!")
+        if pick is None:
+            self.part_pick = pick = {"from_cx": (x1 + x2) // 2, "taps": 0}
+        pick["taps"] += 1
+        if pick["taps"] > 5:
+            raise BotFinished("The next story part didn't respond on Select Part.")
+        self.part_switches += 1 if pick["taps"] == 1 else 0
+        log.info("Moving on to the next story part.")
+        self.click((nx, cy), "next part")
+        return True
+
     def _r_story_map(self, f: Frame) -> bool:
         """Story map: open the left-most stage without a CLEAR label that isn't locked."""
         view = stage_map.analyse(self.lib, f, self.s.match_threshold)
         if not view.is_map:
             return False  # includes a map dimmed behind a popup/cutscene
         self._screen("Story map")
+        self.part_pick = None
         if self.s.mode != MODE_PROGRESS:
             return False  # farm mode: fall through to the 'open a stage first' message
         now = self.clock()
@@ -697,6 +767,16 @@ class StoryBot:
             self.scrolls += 1
             log.info("All visible stages cleared - moving the map right.")
             self.click(view.right_arrow, "map arrow right")
+            self.no_new_frames = 0
+            return True
+        # Last page of this part, everything cleared: go to the next part via Select Part
+        # (in HARD mode, Next Quest doesn't carry on into the next part).
+        locked_here = any(st.locked and not st.cleared for st in view.stages)
+        sp = self.find("select_part_button")
+        if sp and not locked_here and self.part_switches < 50:
+            log.info("This part is finished - opening Select Part to move to the next part.")
+            self.part_pick = None
+            self.click(sp, "select part")
             self.no_new_frames = 0
             return True
         # No arrow recognised: the rest of the part may be off-screen, so swipe the map
@@ -797,15 +877,38 @@ class StoryBot:
         idle = now - self.last_progress
         if self.s.save_unknown_screens and now - self.unknown_since > 10:
             self._save_unknown()
-        in_flow = self.quest_active or now < self.post_battle_until
+        # In Story Progress every screen between quests is part of the story flow (results,
+        # cutscenes, the intro of a new part...), so keep nudging unknown screens along.
+        in_flow = (self.quest_active or now < self.post_battle_until
+                   or (self.s.mode == MODE_PROGRESS and self.stats.started > 0))
         if (self.s.tap_to_advance and in_flow and not self.in_battle
                 and now - self.unknown_since > 6 and now - self.last_tap > 4):
             log.debug("Unrecognised screen during a quest - tapping to advance.")
             self.last_tap = now
             self.dev.click(*self.TAP_POINT)
+        frozen = self._frozen_for(now)
+        if frozen > 60 and not self.frozen_warned:
+            self.frozen_warned = True
+            log.warning("The game picture hasn't changed for a minute. If BlueStacks is "
+                        "minimised it may have paused - restore its window (it can stay behind "
+                        "other windows).")
         if idle > self.s.stuck_timeout_seconds:
             path = self._save_screenshot("stuck")
             hint = f" Screenshot: {path}" if path else ""
-            raise BotFinished(
-                f"Stuck: no known screen for {int(idle)}s. Use the Templates page to capture "
-                f"the button the bot should press.{hint}")
+            why = (" The game picture stopped changing - BlueStacks was probably minimised and "
+                   "paused. Keep it open (behind other windows is fine) and press Start again."
+                   if frozen > 60 else
+                   " Use the Templates page to capture the button the bot should press.")
+            raise BotFinished(f"Stuck: no known screen for {int(idle)}s.{why}{hint}")
+
+    def _frozen_for(self, now: float) -> float:
+        """Seconds the screen has looked exactly the same (a paused emulator)."""
+        import cv2
+        frame = getattr(self, "_frame", None)
+        if frame is None:
+            return 0.0
+        thumb = cv2.resize(cv2.cvtColor(frame.image, cv2.COLOR_BGR2GRAY), (96, 54)).astype("float32")
+        if self.last_thumb is None or float(abs(thumb - self.last_thumb).mean()) > 1.5:
+            self.last_thumb, self.same_since = thumb, now
+            self.frozen_warned = False
+        return now - self.same_since

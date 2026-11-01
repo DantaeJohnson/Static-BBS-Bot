@@ -9,8 +9,7 @@ skips cutscenes, collects rewards and moves on to the next quest, over and over.
 on its own when the story is finished.
 
 While it plays, **your PC is free to use**. The bot never moves your mouse or types on your
-keyboard. It sends taps straight into BlueStacks, which can sit in the background or be
-minimised.
+keyboard. It sends taps straight into BlueStacks, which can sit behind your other windows.
 
 > ⚠️ **Please read:** This is an unofficial, fan-made tool. It isn't made or approved by KLab
 > (the game's makers). Using automation tools may go against the game's Terms of Service.
@@ -187,8 +186,9 @@ how many quests it has cleared. You can now use your PC normally; just **don't c
 * Your PC going to **sleep**. Before a long run, set Windows *Settings → System → Power →
   Sleep* to **Never**. The screen turning off is fine.
 * Turning off ADB in BlueStacks.
-
-Minimising BlueStacks or putting other windows on top of it is fine.
+* **Minimising BlueStacks.** A minimised BlueStacks can pause the game's animations, such
+  as the intro when a new story part starts, and the bot then waits forever. Leave
+  BlueStacks open and just put other windows on top of it. That's fine.
 
 ---
 
@@ -206,7 +206,7 @@ are on the **Settings** page.
 | **Orbs per refill** | 10 | How many orbs one ticket refill costs in your game. |
 | **When out of tickets** | Wait for recharge | If it isn't buying tickets: **wait** for them to refill, or **stop**. |
 | **Expand a full character box** | **Off** | When your character box is full: **off** = stop the bot, **on** = pay 5 orbs for 5 more slots and keep going. |
-| **Orb limit for character slots** | 25 | The most orbs the bot may spend on character slots in one run. |
+| **Orb limit for character slots** | No limit | The most orbs the bot may spend on character slots in one run. **No limit** = expand every time the box fills, until the run ends. |
 
 When any orb option is on, the bot asks you to confirm how many orbs it may spend each time
 you press Start. Before any tap that spends orbs, it takes a fresh look at the screen and
@@ -240,6 +240,7 @@ The bot always writes the reason at the bottom of the Dashboard and in **Live ac
 | **Out of Soul Tickets** | You ran out of tickets and the bot was set to stop. | Wait for tickets to refill, or change **When out of tickets** to *Wait for recharge*. |
 | **Lost 2 times in a row** | Your team couldn't beat that quest on AUTO. | Make your team stronger, then press Start. |
 | **Reached the clear limit / time limit** | It did what you asked. | Nothing to do. |
+| **Stuck … the game picture stopped changing** | BlueStacks was minimised and the game paused. | Restore the BlueStacks window (it can stay behind other windows), then press Start. |
 | **Lost the game screen for over a minute** | The bot couldn't see BlueStacks. | Check BlueStacks is open, then press Start. |
 | **Stuck: no known screen** | The game showed something the bot doesn't recognise. | See *"The bot doesn't recognise a button"* below. |
 
@@ -291,12 +292,20 @@ Click **≡ Logs** in the bot, or open the `logs` folder:
 
 ## 12. Updating the bot
 
-1. Download the new ZIP from GitHub, as in step 2, and extract it.
-2. Copy these folders from your **old** bot folder into the **new** one, so you keep your
-   settings and any buttons you captured:
-   * `config`
-   * `user_templates`
-3. Double-click `Start Static BBS Bot.bat` in the new folder. It runs the first-time setup again.
+**The bot updates itself.** Each time you open it, it checks GitHub for a newer version.
+If there is one, it downloads it, installs it and restarts by itself within a few
+seconds. It never updates in the middle of a run; it waits until the run ends.
+
+Updates keep your settings (`config`), logs, captured buttons (`user_templates`) and
+installed packages. The version number is shown at the top left of the bot.
+
+* No internet? The bot just carries on with the version you have and tries again next time.
+* To turn automatic updates off: **Settings → Hotkeys & interface → Update automatically**.
+
+**Updating by hand** (only needed if automatic updates are off):
+1. Download the new ZIP from GitHub (step 2) and extract it.
+2. Copy the `config` and `user_templates` folders from your old bot folder into the new one.
+3. Double-click `Start Static BBS Bot.bat` in the new folder.
 
 ---
 

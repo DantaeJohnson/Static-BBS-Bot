@@ -63,6 +63,7 @@ def scroll_page(content: QWidget) -> QScrollArea:
 class StatusBridge(QObject):
     """Carries connection-status results from a background thread to the GUI."""
     status = Signal(str, str, object)  # colour, text, (w, h) or None
+    update = Signal(str, str)          # event ("available" / "installed" / "failed" / "none"), detail
 
 
 class ModeCard(QPushButton):
@@ -125,6 +126,11 @@ class MainWindow(QMainWindow):
         self._adb_last_check = 0.0
         self.status_bridge = StatusBridge()
         self.status_bridge.status.connect(self._show_game_status)
+        self.status_bridge.update.connect(self._on_update_event)
+        self.update_pending = ""
+        self.updating = False
+        if self.settings.auto_update:
+            QTimer.singleShot(2500, self._check_for_update)
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self._poll_game)
@@ -266,7 +272,7 @@ class MainWindow(QMainWindow):
             self._set_widget(w, value)
         self._save_timer.start()
         if key in ("use_orbs", "max_orbs", "orbs_per_refill", "out_of_tickets",
-                   "expand_roster", "max_roster_orbs"):
+                   "expand_roster", "roster_orb_limit"):
             self._update_orb_controls()
         elif key in ("pause_hotkey", "stop_hotkey"):
             self._register_hotkeys()
@@ -503,8 +509,9 @@ class MainWindow(QMainWindow):
                          "Off: press Close and end the run.",
                          self._toggle("expand_roster")))
         self.set_roster_orbs = SettingRow("Orb limit for character slots",
-                                          "Separate from the ticket limit. 25 orbs = up to 25 extra slots.",
-                                          self._spin("max_roster_orbs", 0, 100000, " orbs", step=5))
+                                          "Separate from the ticket limit. No limit = expand every time the box fills.",
+                                          self._spin("roster_orb_limit", 0, 100000, " orbs", step=5,
+                                                     zero_text="No limit"))
         c.add(self.set_roster_orbs)
         lay.addWidget(c)
 
@@ -558,6 +565,10 @@ class MainWindow(QMainWindow):
         c.add(SettingRow("On-screen overlay", "Small banner over the game while running.",
                          self._toggle("show_overlay")))
         c.add(SettingRow("Verbose logging", "Log every click and screen change.", self._toggle("debug_logging")))
+        c.add(SettingRow("Update automatically",
+                         "When the bot opens, install the newest version from GitHub and restart "
+                         "(never during a run). Your settings and captures are kept.",
+                         self._toggle("auto_update")))
         lay.addWidget(c)
 
         reset = QPushButton("Restore defaults")
@@ -592,8 +603,11 @@ class MainWindow(QMainWindow):
             txt = f"Orbs are safe: when tickets run out the bot will <b>{action}</b>."
         self.set_roster_orbs.setEnabled(s.expand_roster)
         if s.expand_roster:
-            txt += (f"<br>Full character box: expand, up to <b>{s.max_roster_orbs}</b> orbs "
-                    f"(<b>{s.max_roster_orbs // 5}</b>×5 slots).")
+            if s.roster_orb_limit > 0:
+                txt += (f"<br>Full character box: expand, up to <b>{s.roster_orb_limit}</b> orbs "
+                        f"(<b>{s.roster_orb_limit // 5}</b>×5 slots).")
+            else:
+                txt += "<br>Full character box: expand <b>every time it fills</b> (5 orbs each)."
         else:
             txt += "<br>Full character box: <b>stop the run</b>."
         self.orb_summary.setText(txt)
@@ -866,7 +880,8 @@ class MainWindow(QMainWindow):
             <li>Here: <i>Settings → Connection</i> → Play on <b>BlueStacks (ADB)</b>, enter the address,
                 press <b>Test connection</b> (it downloads adb the first time if needed).</li>
             <li>Open the game's Story map in BlueStacks, pick a mode and press <b>Start</b>.
-                BlueStacks can sit in the background or be minimised - the bot doesn't use your mouse.</li>
+                BlueStacks can sit behind other windows - the bot doesn't use your mouse. Don't minimise
+                it: a minimised BlueStacks can pause animations such as a new part's intro.</li>
             </ol>
             <b>PC (Steam) game</b>
             <ol>
@@ -912,7 +927,7 @@ class MainWindow(QMainWindow):
         self.notice.setStyleSheet(f"color: {color};")
 
     def start_bot(self):
-        if self.worker is not None:
+        if self.worker is not None or self.updating:
             return
         if self.settings.backend == BACKEND_ADB:
             from bbsbot.adb import find_adb
@@ -950,8 +965,11 @@ class MainWindow(QMainWindow):
         spend = []
         if self.settings.use_orbs and self.settings.max_orbs >= self.settings.orbs_per_refill:
             spend.append(f"up to {self.settings.max_orbs} orbs on Soul Tickets")
-        if self.settings.expand_roster and self.settings.max_roster_orbs >= 5:
-            spend.append(f"up to {self.settings.max_roster_orbs} orbs on character slots")
+        if self.settings.expand_roster:
+            if self.settings.roster_orb_limit <= 0:
+                spend.append("5 orbs every time your character box fills up (no limit)")
+            elif self.settings.roster_orb_limit >= 5:
+                spend.append(f"up to {self.settings.roster_orb_limit} orbs on character slots")
         if spend:
             if QMessageBox.question(
                     self, "Spirit Orbs",
@@ -972,7 +990,7 @@ class MainWindow(QMainWindow):
         self.worker.start()
         self._set_running_ui(True)
         if self.settings.backend == BACKEND_ADB:
-            self._notice("Running in BlueStacks - your PC is free to use (don't close BlueStacks).",
+            self._notice("Running in BlueStacks - your PC is free to use (don't close or minimise BlueStacks).",
                          "#4ade80")
         else:
             self._notice("Running - keep the game window visible and leave the mouse alone.", "#4ade80")
@@ -1020,6 +1038,8 @@ class MainWindow(QMainWindow):
             self.worker.deleteLater()
         self.worker = None
         self._set_running_ui(False)
+        if self.update_pending:
+            QTimer.singleShot(1500, lambda: self._install_update(self.update_pending))
         color = "#f87171" if reason.startswith(("Error", "Stuck")) else "#c9ced8"
         self._notice(f"Finished: {reason}", color)
         self.overlay.hide()
@@ -1175,6 +1195,65 @@ class MainWindow(QMainWindow):
         self.conn_result.setStyleSheet(f"color: {'#4ade80' if good else '#fbbf24'};")
         self._adb_last_check = 0.0
         self._poll_game()
+
+    # ================================================================ updates
+    def _check_for_update(self):
+        from bbsbot import updater
+        if not updater.can_update():
+            return
+
+        def work():
+            try:
+                local, remote, newer = updater.check()
+                self.status_bridge.update.emit("available" if newer else "none", remote)
+            except Exception as e:
+                self.status_bridge.update.emit("error", str(e))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_update(self, version: str):
+        from bbsbot import updater
+        if self.updating:
+            return
+        if self.worker is not None:          # never update in the middle of a run
+            self.update_pending = version
+            return
+        self.updating = True
+        self.update_pending = ""
+        self.btn_start.setEnabled(False)
+        self._notice(f"Updating to version {version}... the bot will restart by itself.", "#60a5fa")
+        log.info(f"New version {version} found - updating.")
+
+        def work():
+            try:
+                updater.install(updater.download())
+                self.status_bridge.update.emit("installed", version)
+            except Exception as e:
+                self.status_bridge.update.emit("failed", str(e))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_event(self, event: str, detail: str):
+        from bbsbot import updater
+        if event == "available":
+            self._install_update(detail)
+        elif event == "none":
+            log.debug(f"Up to date (version {__version__}).")
+        elif event == "error":
+            log.debug(f"Couldn't check for updates: {detail}")
+        elif event == "installed":
+            log.success(f"Updated to version {detail}. Restarting...")
+            try:
+                updater.restart()
+            except Exception as e:
+                log.error(f"Updated, but couldn't restart automatically ({e}). Please re-open the bot.")
+                self.updating = False
+                return
+            QTimer.singleShot(300, self.close)
+        elif event == "failed":
+            self.updating = False
+            self.btn_start.setEnabled(self.worker is None)
+            self._notice(f"Update failed: {detail} The bot still works - it will try again next time.",
+                         "#fbbf24")
+            log.warning(f"Update failed: {detail}")
 
     def _update_backend_rows(self):
         adb = self.settings.backend == BACKEND_ADB

@@ -49,6 +49,8 @@ SPECS: list[TemplateSpec] = [
     TemplateSpec("story_arrow_left", "Story", "Yellow '<' arrow on the story map", False),
     TemplateSpec("story_arrow_right", "Story",
                  "Yellow '>' arrow on the story map - moves to the next page of stages"),
+    TemplateSpec("select_part_button", "Story", "'Select Part' button (bottom-left of the story map)"),
+    TemplateSpec("select_part_title", "Story", "'Select Part' title at the top of the part list"),
     TemplateSpec("new_2", "Story", "'NEW' badge on an uncleared quest (side-story lists)"),
     TemplateSpec("new", "Story", "'NEW' badge (alternate style)"),
     TemplateSpec("story_new", "Story",
