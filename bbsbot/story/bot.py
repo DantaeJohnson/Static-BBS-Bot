@@ -94,6 +94,10 @@ class StoryBot:
         self.map_swipes = 0
         self.part_switches = 0                 # parts entered via Select Part this run
         self.part_pick: dict | None = None     # progress of picking the next part
+        self.part_from_map = False             # the bot itself opened Select Part (part finished)
+        self.part_rewind: dict | None = None   # progress of going back to Part 1
+        self.fresh_part = False                # a part was just opened, no stage clicked yet
+        self.left_scrolls = 0
         self.no_next_logged = False
 
         self.no_new_frames = 0
@@ -682,12 +686,67 @@ class StoryBot:
             return None
         return x1, int(rows.min()), x2, int(rows.max())
 
+    def _white_cards(self, f: Frame, cy: int) -> list[tuple[int, int]]:
+        """Horizontal extents (x0, x1) of the white part cards on Select Part."""
+        import cv2
+        import numpy as np
+        band = cv2.cvtColor(f.image[cy + 60:cy + 110], cv2.COLOR_BGR2GRAY)
+        if band.size == 0:
+            return []
+        white = (band > 200).mean(0) > 0.4
+        runs, start = [], None
+        for x, w in enumerate(list(white) + [False]):
+            if w and start is None:
+                start = x
+            elif not w and start is not None:
+                if runs and start - runs[-1][1] <= 12:   # a gap left by the title text
+                    runs[-1] = (runs[-1][0], x - 1)
+                else:
+                    runs.append((start, x - 1))
+                start = None
+        return [r for r in runs if r[1] - r[0] > 150]
+
+    def _open_first_part(self, f: Frame, box) -> bool:
+        """Started on Select Part: scroll back to Part 1 and open it, so parts go in order."""
+        cy = (box[1] + box[3]) // 2 if box else 411
+        st = self.part_rewind
+        if st is None:
+            st = self.part_rewind = {"drags": 0, "last": None, "taps": 0, "at_start": False}
+            log.info("Going back to Part 1 - story parts are played in order.")
+        cards = self._white_cards(f, cy)
+        if not cards:
+            return True  # still sliding in
+        first = cards[0]
+        if not st["at_start"]:
+            if (st["drags"] > 0 and st["last"] is not None and abs(first[0] - st["last"]) < 12) \
+                    or st["drags"] >= 40:
+                st["at_start"] = True   # the list stopped moving: Part 1 is the left-most card
+            else:
+                st["last"] = first[0]
+                st["drags"] += 1
+                self.dev.drag(BASE_W * 0.15, cy, BASE_W * 0.85, cy)
+                self.ctl.wait(max(1.0, self.s.action_delay))
+                return True
+        st["taps"] += 1
+        if st["taps"] > 6:
+            raise BotFinished("Couldn't open Part 1 from Select Part.")
+        log.info("Opening Part 1.")
+        self.click(((first[0] + first[1]) // 2, cy), "open part")
+        self.fresh_part = True
+        return True
+
     def _r_select_part(self, f: Frame) -> bool:
-        """Select Part screen: open the part to the right of the highlighted (current) one."""
+        """Select Part screen.
+
+        Reached because the bot finished a part: open the part after the highlighted
+        (current) one. Otherwise (the run started here): go back to Part 1.
+        """
         if not self.find("select_part_title") or self.s.mode != MODE_PROGRESS:
             return False
         self._screen("Select Part")
         box = self._highlighted_part(f)
+        if not self.part_from_map:
+            return self._open_first_part(f, box)
         if box is None:
             return True  # still sliding in; look again next tick
         x1, y1, x2, y2 = box
@@ -700,6 +759,7 @@ class StoryBot:
                 raise BotFinished("Couldn't open the next story part from Select Part.")
             log.info("Opening the next story part.")
             self.click(((x1 + x2) // 2, cy), "open part")
+            self.fresh_part = True
             return True
         nx = x2 + self.PART_GAP + (x2 - x1) // 2   # centre of the card to the right
         if nx > BASE_W - 110:
@@ -720,6 +780,7 @@ class StoryBot:
         self.part_switches += 1 if pick["taps"] == 1 else 0
         log.info("Moving on to the next story part.")
         self.click((nx, cy), "next part")
+        self.fresh_part = True
         return True
 
     def _r_story_map(self, f: Frame) -> bool:
@@ -729,6 +790,7 @@ class StoryBot:
             return False  # includes a map dimmed behind a popup/cutscene
         self._screen("Story map")
         self.part_pick = None
+        self.part_rewind = None
         if self.s.mode != MODE_PROGRESS:
             return False  # farm mode: fall through to the 'open a stage first' message
         now = self.clock()
@@ -752,6 +814,8 @@ class StoryBot:
             log.info(f"Opening the next uncleared stage ({kind}).")
             self.click((cx, cy), "stage")
             self.last_stage_click = self.clock()
+            self.fresh_part = False
+            self.left_scrolls = 0
             self.post_battle_until = self.clock() + 120  # in a quest flow: unknown screens get tapped
             return True
 
@@ -761,7 +825,17 @@ class StoryBot:
         self.no_new_frames += 1
         # Opening a stage moments ago means the map should be changing - don't conclude
         # anything until it has stayed clear for a while.
-        if now - self.map_empty_since < 8 or now - self.last_stage_click < 30:
+        # A part just opened from Select Part has no unlock animation to wait for.
+        settle = 3 if self.fresh_part else 8
+        if now - self.map_empty_since < settle or now - self.last_stage_click < 30:
+            return True
+        # Every visible stage is locked: the next stage to play is on an earlier page.
+        if (view.left_arrow and self.left_scrolls < 10 and view.stages
+                and all(st.locked and not st.cleared for st in view.stages)):
+            self.left_scrolls += 1
+            log.info("Only locked stages here - moving the map left to the next stage to play.")
+            self.click(view.left_arrow, "map arrow left")
+            self.no_new_frames = 0
             return True
         if view.right_arrow and self.scrolls < 10:
             self.scrolls += 1
@@ -776,6 +850,8 @@ class StoryBot:
         if sp and not locked_here and self.part_switches < 50:
             log.info("This part is finished - opening Select Part to move to the next part.")
             self.part_pick = None
+            self.part_from_map = True
+            self.left_scrolls = 0
             self.click(sp, "select part")
             self.no_new_frames = 0
             return True

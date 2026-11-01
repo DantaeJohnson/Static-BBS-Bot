@@ -46,6 +46,8 @@ SPECS: list[TemplateSpec] = [
     TemplateSpec("story_clear", "Story", "'CLEAR' label under a finished stage on the story map"),
     TemplateSpec("story_stars_empty", "Story", "Grey (unearned) star plate under a battle stage on the map"),
     TemplateSpec("story_node", "Story", "Blue pedestal of a cutscene-only stage on the map"),
+    TemplateSpec("story_node_current", "Story",
+                 "Yellow pedestal of the stage your character is standing on", False),
     TemplateSpec("story_arrow_left", "Story", "Yellow '<' arrow on the story map", False),
     TemplateSpec("story_arrow_right", "Story",
                  "Yellow '>' arrow on the story map - moves to the next page of stages"),

@@ -23,6 +23,7 @@ from bbsbot.vision import BASE_H, BASE_W, Frame, TemplateLibrary
 CLEAR = "story_clear"
 STARS = "story_stars_empty"   # grey (unearned) star plate under a battle stage
 NODE = "story_node"           # blue pedestal of a cutscene stage
+NODE_CURRENT = "story_node_current"  # yellow pedestal: the stage your character stands on
 ARROW_LEFT = "story_arrow_left"
 ARROW_RIGHT = "story_arrow_right"
 
@@ -94,6 +95,17 @@ def analyse(lib: TemplateLibrary, frame: Frame, threshold: float | None = None) 
         x, y = m.center
         b = _brightness(frame, x - 45, y + 33, x + 45, y + 68)  # number below the pedestal
         view.stages.append(Stage("cutscene", x, y, has_clear(x, y, 50, 125), b < NUMBER_BRIGHT, b))
+
+    # The stage your character stands on has a yellow pedestal instead of a blue one
+    # (seen in HARD mode at the start of a part). Same geometry, slightly lower anchor.
+    if lib.has(NODE_CURRENT):
+        for m in lib.find_all(frame, NODE_CURRENT, threshold=thr - 0.08):
+            x, y = m.center
+            if any(abs(s.x - x) < 40 and abs(s.y - y) < 40 for s in view.stages):
+                continue
+            b = _brightness(frame, x - 45, y + 24, x + 45, y + 56)
+            view.stages.append(Stage("cutscene", x, y, has_clear(x, y, 40, 115),
+                                     b < NUMBER_BRIGHT, b))
 
     left = lib.find(frame, ARROW_LEFT, threshold=thr)
     right = lib.find(frame, ARROW_RIGHT, threshold=thr)
