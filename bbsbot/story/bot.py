@@ -560,12 +560,11 @@ class StoryBot:
         if self.s.mode != MODE_PROGRESS or not self.find("solo_quests_title"):
             return False
         story = self.find("solo_story")
-        if not story:
-            return False
         self._screen("Solo Quests")
         if self._nav_ready():
             log.info("Solo Quests - opening STORY.")
-            self.click(story, "solo story")
+            # The button's artwork changes; if it isn't recognised, tap where it always is.
+            self.click(story if story else (883, 310), "solo story")
         return True
 
     def _r_home(self, f: Frame) -> bool:
